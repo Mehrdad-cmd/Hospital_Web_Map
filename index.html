@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Berlin Hospitals Density</title>
+
+    <!-- MapLibre GL JS -->
+    <link href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.21.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.21.0/dist/maplibre-gl.js"></script>
+
+    <!-- PMTiles protocol plugin — lets MapLibre read .pmtiles files directly -->
+    <script src="https://cdn.jsdelivr.net/npm/pmtiles@4.4.0/dist/pmtiles.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* --- Legend --- */
+        #legend {
+            position: absolute;
+            bottom: 30px;
+            left: 10px;
+            background: white;
+            padding: 12px 14px;
+            border-radius: 6px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+            font-size: 13px;
+            z-index: 1;
+        }
+
+        #legend h4 {
+            margin: 0 0 8px 0;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .legend-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 3px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 14px;
+            margin-right: 8px;
+            border-radius: 2px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        /* --- Info panel --- */
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 10px 14px;
+            border-radius: 6px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+            font-size: 13px;
+            z-index: 1;
+            max-width: 280px;
+        }
+
+        #info h3 {
+            margin: 0 0 4px 0;
+            font-size: 15px;
+        }
+
+        #info p {
+            margin: 0;
+            color: #555;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="map"></div>
+
+    <!-- Info panel -->
+    <div id="info">
+        <h3>Berlin Hospitals</h3>
+        <p>Hospital counts by district. Click a district for details.</p>
+    </div>
+
+    <!-- Legend -->
+    <div id="legend">
+        <h4>Hospitals by district</h4>
+        <div class="legend-row">
+            <div class="legend-color" style="background:#f7fcf0"></div> 0–3
+        </div>
+        <div class="legend-row">
+            <div class="legend-color" style="background:#e0f3db"></div> 4–7
+        </div>
+        <div class="legend-row">
+            <div class="legend-color" style="background:#ccebc5"></div> 8–12
+        </div>
+        <div class="legend-row">
+            <div class="legend-color" style="background:#a8ddb5"></div> 13–16
+        </div>
+        <div class="legend-row">
+            <div class="legend-color" style="background:#43a2ca"></div> 17+
+        </div>
+    </div>
+
+    <script>
+        // ── Register the PMTiles protocol so MapLibre can read .pmtiles URLs ──
+        const protocol = new pmtiles.Protocol();
+        maplibregl.addProtocol('pmtiles', protocol.tile);
+
+        // ── Create the map ────────────────────────────────────────────────────
+        const map = new maplibregl.Map({
+            container: 'map',
+            // Free basemap from Protomaps — no API key needed
+            style: {
+                version: 8,
+                glyphs: 'https://cdn.protomaps.com/fonts/pbf/{fontstack}/{range}.pbf',
+                sources: {
+                    'basemap': {
+                        type: 'raster',
+                        tiles: [
+                            'https://a.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}.png'
+                        ],
+                        tileSize: 256,
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    }
+                },
+                layers: [{
+                    id: 'basemap-tiles',
+                    type: 'raster',
+                    source: 'basemap',
+                    minzoom: 0,
+                    maxzoom: 19
+                }]
+            },
+            center: [13.405, 52.52],  // Berlin center
+            zoom: 9,
+            maxZoom: 14,
+            minZoom: 8
+        });
+
+        map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+        // // ── Add the PMTiles source and layers when the map loads ──────────────
+        map.on('load', () => {
+
+            // PMTiles source — the file is served from the same directory
+            const pmtilesUrl = 'http://localhost:8585/hospital_with_counts.pmtiles';
+            map.addSource('density', {
+                type: 'vector',
+                url: `pmtiles://${pmtilesUrl}`
+            });
+
+
+            // Choropleth fill layer using the hospital count field.
+            map.addLayer({
+                id: 'density-fill',
+                type: 'fill',
+                source: 'density',
+                'source-layer': 'h_density',
+                paint: {
+                    'fill-color': [
+                        'step',
+                        ['coalesce', ['get', 'hospital_count']],
+                        '#f7fcf0',
+                        4, '#e0f3db',
+                        8, '#ccebc5',
+                        12, '#a8ddb5',
+                        16, '#43a2ca',
+                        20, '#0868ac'
+                    ],
+                    'fill-opacity': 0.75
+                }
+            });
+
+            // Outline layer for neighborhood boundaries
+            map.addLayer({
+                id: 'density-outline',
+                type: 'line',
+                source: 'density',
+                'source-layer': 'h_density',
+                paint: {
+                    'line-color': '#333',
+                    'line-width': 0.5,
+                    'line-opacity': 0.6
+                }
+            });
+
+            // Highlight layer — invisible until a feature is hovered
+            map.addLayer({
+                id: 'density-highlight',
+                type: 'line',
+                source: 'density',
+                'source-layer': 'h_density',
+                paint: {
+                    'line-color': '#000',
+                    'line-width': 2.5
+                },
+                filter: ['==', ['get', 'namgem'], '']  // matches nothing initially
+            });
+        });
+
+        // ── Click handler — show popup with neighborhood details ──────────────
+        map.on('click', 'density-fill', (e) => {
+            if (!e.features || e.features.length === 0) return;
+
+            const f = e.features[0].properties;
+            const name = f.namgem || f.namlan || 'District';
+            const hospitalCount = f.hospital_count ?? f.hospitals_per_km2 ?? 'n/a';
+            const area = f.area_km2 ?? 'n/a';
+            const html = `
+                <strong>${name}</strong><br>
+                ${f.namlan || 'Berlin'}<br>
+                <hr style="margin:4px 0;border:none;border-top:1px solid #ddd">
+                Hospitals: <strong>${hospitalCount}</strong><br>
+                Area: <strong>${area}</strong><br>
+
+            `;
+
+            new maplibregl.Popup({ maxWidth: '240px' })
+                .setLngLat(e.lngLat)
+                .setHTML(html)
+                .addTo(map);
+        });
+
+        // ── Hover effect — highlight the neighborhood under the cursor ────────
+        map.on('mousemove', 'density-fill', (e) => {
+            map.getCanvas().style.cursor = 'pointer';
+            if (e.features && e.features.length > 0) {
+                map.setFilter('density-highlight', [
+                    '==', ['get', 'namgem'], e.features[0].properties.namgem
+                ]);
+            }
+        });
+
+        map.on('mouseleave', 'density-fill', () => {
+            map.getCanvas().style.cursor = '';
+            map.setFilter('density-highlight', ['==', ['get', 'namgem'], '']);
+        });
+    </script>
+
+</body>
+
+</html>
