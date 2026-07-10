@@ -160,7 +160,7 @@
         map.on('load', () => {
 
             // PMTiles source — the file is served from the same directory
-            const pmtilesUrl = 'http://localhost:8585/hospital_with_counts.pmtiles';
+            const pmtilesUrl = './hospital_with_counts.pmtiles';
             map.addSource('density', {
                 type: 'vector',
                 url: `pmtiles://${pmtilesUrl}`
