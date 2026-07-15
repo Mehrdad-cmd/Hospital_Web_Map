@@ -1,4 +1,4 @@
-# Part3 — Berlin Hospital Density Map
+ Berlin Hospital Density Map
 
 This project generates a PMTiles vector tile package from Berlin neighborhood hospital count data and displays it in a browser with MapLibre GL JS.
 
